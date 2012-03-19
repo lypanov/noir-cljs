@@ -13,7 +13,7 @@
 (def options (atom {}))
 (def watched (atom {}))
 (def diffs (ref []))
-(def mode (atom :simple))
+(def mode (atom :interactive))
 (def build-dirs ["checkouts/"])
 
 (defn ts []
