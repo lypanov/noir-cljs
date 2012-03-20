@@ -35,6 +35,8 @@
                                 (util/log (str "ReferenceError: " (. e -message))))
                               (catch js/TypeError e
                                 (util/log (str "TypeError: " (. e -message))))
+                              (catch js/Error e
+                                (util/log (str "Error: " (. e -message))))
                             )
                             (doseq [cur @callbacks]
                               (try
@@ -43,6 +45,8 @@
                                   (util/log (str "ReferenceError: " (. e -message))))
                                 (catch js/TypeError e
                                   (util/log (str "TypeError: " (. e -message))))
+                                (catch js/Error e
+                                  (util/log (str "Error: " (. e -message))))
                               )
                             ))
                           (when (= @cur-mode :interactive)
