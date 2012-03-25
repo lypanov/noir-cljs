@@ -15,7 +15,7 @@
 (def cur-mode (atom :interactive))
 
 (defn css-poll []
-  (wait 100 #(fetch/xhr [:get "/css-any-changes"] {}
+  (wait 100 #(fetch/xhr [:get "/noir-cljs-css-any-changes"] {}
                         (fn [data]
                           (when (= "true" data)
                             (js* "(function()
