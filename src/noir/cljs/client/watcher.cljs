@@ -4,8 +4,8 @@
             [cljs.reader :as reader]
             [jayq.util :as util])
   (:use [jayq.core :only [$ append delegate data add-class remove-class find]]
-        [crate.tags :only [link-to]])
-  (:use-macros [crate.macros :only [defpartial]]))
+        [crate.element :only [link-to]])
+  (:use-macros [crate.def-macros :only [defpartial]]))
 
 (defn wait [ms func]
   (js* "setTimeout(~{func}, ~{ms})"))
