@@ -7,4 +7,4 @@
                  [crate "0.2.0-alpha2"]
                  [watchtower "0.1.1"]
                  [colorize "0.1.1"]
-                 [org.clojure/clojurescript "0.0-1011"]])
+                 [org.clojure/clojurescript "0.0-1236"]])
