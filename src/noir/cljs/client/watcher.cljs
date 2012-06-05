@@ -2,7 +2,12 @@
   (:require [fetch.core :as fetch]
             [crate.core :as crate]
             [cljs.reader :as reader]
-            [jayq.util :as util])
+            [jayq.util :as util]
+            [goog.net.BrowserChannel :as goog-browserchannel]
+            [goog.events :as events]
+            [goog.events.KeyCodes :as key-codes]
+            [goog.events.KeyHandler :as key-handler]
+            )
   (:use [jayq.core :only [$ append delegate data add-class remove-class find]]
         [crate.element :only [link-to]])
   (:use-macros [crate.def-macros :only [defpartial]]))
@@ -14,8 +19,59 @@
 (def callbacks (atom []))
 (def cur-mode (atom :interactive))
 
+(def channel (goog.net.BrowserChannel.))
+
+(def handlers (atom []))
+
+(defn on-push [func]
+  (swap! handlers conj func))
+
+(defn handler []
+  (let [h (goog.net.BrowserChannel.Handler.)]
+    (set! (.-channelOpened h)
+          (fn [channel]))
+    (set! (.-channelHandleArray h)
+          (fn [x data]
+            (let [msg (aget data "msg")]
+              (util/log @handlers)
+              (doseq [cur @handlers]
+                (util/log "trying handler")
+                (try
+                  (cur msg)
+                  (catch js/Error e
+                    (util/log e))))
+              )))
+    h))
+
+(defn say [text]
+  (.sendMap channel (doto (js-obj)
+                      (aset "msg" text)) ))
+
+(defn ^:export run []
+  (util/log "run!")
+  (events/listen js/window "unload" #(do
+                                       (.disconnect channel ())
+                                       (events/removeAll)))
+  (doto (.. channel getChannelDebug getLogger)
+      (.setLevel goog.debug.Logger.Level.OFF))
+  (doto channel
+    (.setHandler (handler))
+    (.connect "/channel/test" "/channel/bind"))
+  (on-push (fn [raw]
+             (util/log "INCOMING3")
+             (util/log (subs raw 0 14))
+             (if (= (subs raw 0 14) "redis message " )
+               (let [msg (JSON/parse (subs raw 14))
+                     msgch (aget msg "chat_message")
+                     data (aget msg "updates")]
+                 (if (= msgch "cljs-noir")
+                   (do
+                     (util/log 912)
+                     (util/log data)
+                     (eval-data data))))))))
+
 (defn css-poll []
-  (wait 100 #(fetch/xhr [:get "/noir-cljs-css-any-changes"] {}
+  (wait 500 #(fetch/xhr [:get "/noir-cljs-css-any-changes"] {}
                         (fn [data]
                           (when (= "true" data)
                             (js* "(function()
@@ -25,8 +81,13 @@
                             (css-poll))))))
 
 (defn poll []
-  (wait 100 #(fetch/xhr [:get "/noir-cljs-get-updated"] {}
+  (wait 500 #(fetch/xhr [:get "/noir-cljs-get-updated"] {}
                         (fn [data]
+                          (eval-data data)
+                          (when (= @cur-mode :interactive)
+                            (poll))))))
+
+(defn eval-data [data]
                           (when (and data
                                      (not= data ""))
                             (try
@@ -48,9 +109,7 @@
                                 (catch js/Error e
                                   (util/log (str "Error: " (. e -message))))
                               )
-                            ))
-                          (when (= @cur-mode :interactive)
-                            (poll))))))
+                            )))
 
 (defn on-update [func]
   (swap! callbacks conj func))
@@ -103,6 +162,8 @@
   (get-mode (fn [m]
               (setup-delegates)
               (when (= m :interactive)
-                (poll))
-              (css-poll)
+                ; (poll)
+                ; (css-poll)
+                (run)
+                )
               (append $body (selector m)))))

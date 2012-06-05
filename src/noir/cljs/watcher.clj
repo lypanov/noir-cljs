@@ -6,15 +6,19 @@
             [colorize.core :as c]
             [clojure.set :as set]
             [clojure.walk :as walk]
-            [clojure.string :as string])
+            [clojure.string :as string]
+            [clj-redis.client :as redis]
+            [clojure.data.json :as json])
   (:use [watchtower.core :only [watcher get-files ignore-dotfiles
                                 extensions rate file-filter on-change]]))
+
+(def r (redis/init {:url (get (System/getenv) "REDISTOGO_URL" "redis://127.0.0.1:6379")}))
 
 (def options (atom {}))
 (def watched (atom {}))
 (def diffs (ref []))
 (def mode (atom :interactive))
-(def build-dirs ["checkouts/"])
+(def build-dirs ["checkouts/" "resources/javascript"])
 
 (defn ts []
     (let [c (Calendar/getInstance)
@@ -70,26 +74,48 @@
           :pretty-print true}
          (@options m)))
 
-(defn build [m]
+(def my-agent (agent "start state"))
+
+(defn build [state m]
+  (println "old state was " state)
+  (println "starting build")
   (let [options (compile-options m)]
-    (cljs/build (:src-dir options) options)))
+    (cljs/build (:src-dir options) options))
+  (println "built!")
+  "new state")
+
+(defn fire-off-build [m]
+  (println "firing off build in bg")
+  (send-off my-agent build m)
+  (println "fired off build it bg"))
 
 (defmulti on-file-changed (fn [m _] m))
 
 (defmethod on-file-changed :interactive [_ fs]
   (doseq [f fs]
-    (if-not (@watched (->name f))
-      (init-file f)
-      (update-file f))))
+    (if (.contains (->name f) ".cljs")
+      (if-not (@watched (->name f))
+        (init-file f)
+        (update-file f))))
+  (dosync
+    (let [entries @diffs
+          cljs (for [[nsp form] entries] (compiler/->cljs form nsp))
+          js (string/join "\n" cljs)]
+      (println js)
+      (ref-set diffs [])
+      (redis/publish r "*" (json/json-str { :chat_message "cljs-noir"
+                                            :updates js
+                                          }))))
+  (fire-off-build :simple))
 
 (defmethod on-file-changed :simple [_ fs]
   (println (ts) (c/cyan ":: Simple compile"))
-  (build :simple)
+  (fire-off-build :simple)
   (println (ts) (c/green ":: Done")))
 
 (defmethod on-file-changed :advanced [_ fs]
   (println (ts) (c/cyan ":: Advanced compile"))
-  (build :advanced)
+  (fire-off-build :advanced)
   (println (ts) (c/green ":: Done")))
 
 (defn update-files [fs]
@@ -115,6 +141,6 @@
       (init-file f))
     (watcher (list* src-dir build-dirs)
              (rate 100)
-             (file-filter (extensions :cljs))
+             (file-filter (extensions :cljs :js))
              (file-filter ignore-dotfiles)
              (on-change update-files))))
