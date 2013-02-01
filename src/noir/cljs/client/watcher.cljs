@@ -33,9 +33,7 @@
     (set! (.-channelHandleArray h)
           (fn [x data]
             (let [msg (aget data "msg")]
-              (util/log @handlers)
               (doseq [cur @handlers]
-                (util/log "trying handler")
                 (try
                   (cur msg)
                   (catch js/Error e
@@ -48,7 +46,6 @@
                       (aset "msg" text)) ))
 
 (defn ^:export run []
-  (util/log "run!")
   (events/listen js/window "unload" #(do
                                        (.disconnect channel ())
                                        (events/removeAll)))
@@ -58,16 +55,12 @@
     (.setHandler (handler))
     (.connect "/channel/test" "/channel/bind"))
   (on-push (fn [raw]
-             (util/log "INCOMING3")
-             (util/log (subs raw 0 14))
              (if (= (subs raw 0 14) "redis message " )
                (let [msg (JSON/parse (subs raw 14))
                      msgch (aget msg "chat_message")
                      data (aget msg "updates")]
                  (if (= msgch "cljs-noir")
                    (do
-                     (util/log 912)
-                     (util/log data)
                      (eval-data data))))))))
 
 (defn css-poll []
