@@ -19,6 +19,7 @@
 (def diffs (ref []))
 (def mode (atom :interactive))
 (def build-dirs ["checkouts/" "resources/javascript"])
+(def last-compile-message (atom nil))
 
 (defn ts []
     (let [c (Calendar/getInstance)
@@ -49,12 +50,25 @@
     {:ns (->ns form)
      :form (clean form)}))
 
+(defn handle-error [ag message]
+  (println "Error during compile - " message)
+  (redis/publish r "*" (json/json-str { :chat_message "cljs-noir"
+                                        :updates (str "console.log('" message "');")
+                                      }))
+  (reset! last-compile-message message))
+
+(defn handle-file-error [f e]
+  (handle-error nil (str f " :: " (.getMessage e))))
+
 (defn init-file [f]
+  (try
   (let [neue (->cljs-file f)]
     (compiler/->cljs (:form neue) (:ns neue))
-    (swap! watched assoc (->name f) neue)))
+    (swap! watched assoc (->name f) neue))
+    (catch Exception e (handle-file-error f e))))
 
 (defn update-file [f]
+  (try
   (let [old-form (set (rest (get-in @watched [(->name f) :form])))
         neue (->cljs-file f)
         neue-form (set (rest (:form neue)))
@@ -64,7 +78,8 @@
     (when (seq updated)
       (let [entry [(:ns neue) (list* 'do updated)]]
         (println (ts) (c/green ":: sending ::") updated)
-        (dosync (alter diffs conj entry))))))
+        (dosync (alter diffs conj entry)))))
+  (catch Exception e (handle-file-error f e))))
 
 (defn compile-options [m]
   (merge {:output-dir "resources/public/cljs/"
@@ -75,6 +90,8 @@
          (@options m)))
 
 (def my-agent (agent "start state"))
+(set-error-handler! my-agent #(handle-error %1 (str "known file..." (.getMessage %2))))
+(set-error-mode! my-agent :continue)
 
 (defn build [state m]
   (println "old state was " state)
@@ -92,6 +109,9 @@
 (defmulti on-file-changed (fn [m _] m))
 
 (defmethod on-file-changed :interactive [_ fs]
+  ; reset compiler warnings here rather than at the start of the build as the build
+  ; is started *after* the initial run of init-files on new-planner start up
+  (reset! last-compile-message nil)
   (doseq [f fs]
     (if (.contains (->name f) ".cljs")
       (if-not (@watched (->name f))
@@ -143,4 +163,5 @@
              (rate 100)
              (file-filter (extensions :cljs :js))
              (file-filter ignore-dotfiles)
-             (on-change update-files))))
+             (on-change update-files))
+    ))
