@@ -47,7 +47,7 @@
           env (assoc env :ns (@anal/namespaces anal/*cljs-ns*))
           ast (anal/analyze env form)
           js (with-out-str (comp/emits ast))
-          wrap-js (with-out-str (comp/emits (binding [anal/*cljs-warn-on-undeclared* false]
+          wrap-js (with-out-str (comp/emits (binding [anal/*cljs-warnings* (assoc anal/*cljs-warnings* :undeclared false)]
                                 (anal/analyze env form))))]
       wrap-js)))
 
